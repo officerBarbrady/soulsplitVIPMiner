@@ -1,0 +1,685 @@
+{$i SRL/SRL.simba}
+{$i SRL/srl/misc/debug.simba}
+
+type formGUI = record
+  Form, load, save:TForm;
+  combos:array[0..1] of TComboBox;
+  Checks:array[0..3] of TCheckBox;
+  loadButtons:array[0..2] of TButton;
+  selectButtons:array[0..1] of TButton;
+  loaded:TListBox;
+  saveEdit:TEdit;
+  saveButton:TButton;
+end;
+
+type ssRock = record
+  color, tol, xp:Integer;
+  hue, sat:Extended;
+  name:string;
+end;
+var
+  debug, pressed, rClick, logoutMod, autoLogin:boolean;
+  Inventory:TBoxArray;
+  mined:Integer;
+  myGUI:formGUI;
+  myRock:ssRock;
+  myMode:string;
+
+function ss_ContainsText(CheckText: String; Text: TStringArray): Boolean;
+Var
+  i: Integer;
+Begin
+  for i := 0 to High(Text) do
+  If (Pos(Text[i], CheckText) > 0) then
+  begin
+    Result := True;
+    Exit;
+  end;
+end;
+
+function progressReport():Boolean;
+var
+  mined_PH, xp_PH:Integer;
+begin
+  mined_PH := Round(mined * (3600.0 / (GetTimeRunning / 1000.0)));
+  xp_PH := Round((mined * myRock.xp) * (3600.0 / (GetTimeRunning / 1000.0)));
+  Cleardebug;
+  Writeln('=======================================');
+  Writeln('===Mining ' + myRock.name + '===' + myMode + '===');
+  Writeln('Time running: ' + Timerunning);
+  Writeln('Mined: ' + ToStr(mined) + ' per hour: ' + ToStr(mined_PH));
+  Writeln('XP: ' + ToStr(mined * myRock.xp) + ' per hour: ' + ToStr(xp_PH));
+  Writeln('=======================================');
+  result := true;
+end;
+
+Function ss_GetChooseOptions: TStringArray;
+Var
+  WhiteBoxT,BlueBoxT,YellowBoxT,OrangeBoxT,FoundText: String;
+  OptionTB:TBox;
+  OptionBoxTPA1: TPointArray;
+  NumberOfOptions,C: Integer;
+Begin
+  FindColors(OptionBoxTPA1, 4674653, 0, 0, 764, 502);
+  OptionTB:=getTPABounds(OptionBoxTPA1);
+  If (Length(OptionBoxTPA1) < 10) Then
+  Begin
+    Exit;
+  End;
+  NumberOfOptions:=((OptionTB.Y2-2) - (OptionTB.Y1+21)) / 14;
+  SetLength(Result,NumberOfOptions);
+  For C:=0 To (NumberOfOptions-1) Do
+  Begin
+    If (OptionTB.Y1+21+(C*15)) > OptionTB.Y1+21+((C+1)*14) Then
+    Begin
+      Exit;
+    End;
+    WhiteBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 16777215, 5, 'UpChars07');
+    BlueBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 16776960, 5, 'UpChars07');
+    YellowBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 65535, 5, 'UpChars07');
+    OrangeBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 4231423, 5, 'UpChars07');
+    FoundText:=WhiteBoxT+' '+BlueBoxT+YellowBoxT+OrangeBoxT;
+    Result[C]:=Trim(FoundText);
+  End;
+End;
+
+Function ss_ChooseOptionMulti(Text: TStringArray): Boolean;
+Var
+  WhiteBoxT,BlueBoxT,YellowBoxT,OrangeBoxT,FoundText: String;
+  OptionTB:TBox;
+  OptionBoxTPA1: TPointArray;
+  NumberOfOptions,C,X,Y: Integer;
+Begin
+  FindColors(OptionBoxTPA1, 4674653, 0, 0, 764, 502);
+  OptionTB:=getTPABounds(OptionBoxTPA1);
+  If (Length(OptionBoxTPA1) < 10) Then
+  Begin
+    Result:=False;
+    Exit;
+  End;
+  NumberOfOptions:=((OptionTB.Y2-2) - (OptionTB.Y1+21)) / 14;
+  For C:=0 To (NumberOfOptions-1) Do
+  Begin
+    If (OptionTB.Y1+21+(C*15)) > OptionTB.Y1+21+((C+1)*14) Then
+    Begin
+      Result:=False;
+      Break;
+    End;
+    WhiteBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 16777215, 5, 'UpChars07');
+    BlueBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 16776960, 5, 'UpChars07');
+    YellowBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 65535, 5, 'UpChars07');
+    OrangeBoxT:=GetTextAtExWrap(OptionTB.X1+2, OptionTB.Y1+21+(C*15), OptionTB.X2-2, OptionTB.Y1+21+((C+1)*14), 0, 5, 1, 4231423, 5, 'UpChars07');
+    FoundText:=WhiteBoxT+' '+BlueBoxT+YellowBoxT+OrangeBoxT;
+    If (ss_ContainsText(FoundText,Text)) Then
+    Begin
+      MMouse(RandomRange(OptionTB.X1+2,OptionTB.X2-2),RandomRange(OptionTB.Y1+21+(C*14),OptionTB.Y1+21+((C+1)*14)),0,0);
+      ClickMouse2(mouse_left);
+      Result:=True;
+      Exit;
+    End;
+  End;
+  GetMousePos(X,Y);
+  If Y > 21 Then
+    MMouse(RandomRange(OptionTB.X1+2,OptionTB.X2-2),RandomRange(Y-10,Y-20),0,0)
+  Else
+    MMouse(RandomRange(5,535),RandomRange(350,490),0,0);
+  Result:=False;
+End;
+
+function BoxCenter(bx: TBox): TPoint;
+begin
+  if ((bx.X1 > bx.X2) or (bx.Y1 > bx.Y2)) then
+  begin
+    if (bx.X1 > bx.X2) then
+      Swap(bx.X1, bx.X2);
+    if (bx.Y1 > bx.Y2) then
+      Swap(bx.Y1, bx.Y2);
+  end;
+  Result := Point(Round(bx.X1 + ((bx.X2 - bx.X1) div 2)), Round(bx.Y1 + ((bx.Y2 - bx.Y1) div 2)));
+end;
+
+function ExplodeBox(bx: TBox; rows, columns: integer): TBoxArray;
+var
+  r, c, w, h, ew, eh, ow, oh, i, x, y: integer;
+begin
+  if ((rows > 0) and (columns > 0) and (bx.X1 <= bx.X2) and (bx.Y1 <= bx.Y2)) then
+  begin
+    w := ((bx.X2 - bx.X1) + 1);
+    h := ((bx.Y2 - bx.Y1) + 1);
+    if (rows < 1) then
+      rows := 1
+    else
+      if (rows > h) then
+        rows := h;
+    if (columns < 1) then
+      columns := 1
+    else
+      if (columns > w) then
+        columns := w;
+    w := (w div columns);
+    h := (h div rows);
+    ew := (((bx.X2 - bx.X1) + 1) - (w * columns));
+    eh := (((bx.Y2 - bx.Y1) + 1) - (h * rows));
+    SetLength(Result, (rows * columns));
+    y := bx.Y1;
+    for r := 0 to (rows - 1) do
+    begin
+      x := bx.X1;
+      if ((eh > 0) and (r < eh)) then
+        oh := 1
+      else
+        oh := 0;
+      for c := 0 to (columns - 1) do
+      begin
+        if ((ew > 0) and (c < ew)) then
+          ow := 1
+        else
+          ow := 0;
+        i := ((r * columns) + c);
+        Result[i].X1 := x;
+        Result[i].X2 := (x + (w - 1) + ow);
+        Result[i].Y1 := y;
+        Result[i].Y2 := (y + (h - 1) + oh);
+        x := (Result[i].X2 + 1);
+      end;
+      y := (Result[i].Y2 + 1);
+    end;
+  end else
+    SetLength(Result, 0);
+end;
+
+procedure setInv;
+begin
+  Inventory := ExplodeBox(IntToBox(563, 214, 720, 460), 7, 4);
+end;
+
+function ss_slotFull(slot:Integer):Boolean;
+var
+  x, y:Integer;
+begin
+  if FindColor(x, y, 65536, Inventory[slot].x1, Inventory[slot].y1, Inventory[slot].x2, Inventory[slot].y2) then
+    result := true;
+end;
+
+function ss_Invcount:Integer;
+var
+  i:Integer;
+begin
+ for i := 0 to high(Inventory) do
+  begin
+    if ss_slotFull(i) then
+      result := result + 1;
+  end;
+end;
+
+function ss_invFull:Boolean;
+begin
+  result := (ss_invcount = 28);
+end;
+
+procedure ss_InteractItem(Slot:Integer; Button:Variant);
+begin
+  Mouse(BoxCenter(Inventory[Slot]).x, BoxCenter(Inventory[Slot]).y, 0, 0, BUTTON);
+end;
+
+procedure ss_dropAll;
+var
+  i:Integer;
+begin
+  for i := 0 to high(Inventory) do
+  begin
+    if ss_slotFull(i) then
+    begin
+      ss_InteractItem(i, Mouse_right);
+      ss_ChooseOptionMulti(['rop']);
+    end;
+  end;
+end;
+
+procedure waitMine;
+var
+  t, inv_count:Integer;
+begin
+  Marktime(t);
+  inv_count := ss_Invcount;
+  repeat
+    wait(200);
+  until ((inv_count < ss_invCount) or (TimeFromMark(t) > 3500));
+  if (inv_Count < ss_invCount) then
+    mined := mined + 1;
+  wait(700);
+end;
+
+function findModFunc:boolean;
+var
+  modColors:TIntegerArray;
+  i, x, y:Integer;
+  sB:TBox;
+begin
+  sB := IntToBox(6, 344, 17, 459);
+  modColors := [16039266, 10658466, 720630];
+  for i := 0 to high(modColors) do
+  begin
+    result := FindColorTolerance(x, y, modColors[i], sB.x1, sB.y1, sB.x2, sB.y2, 10);
+    if result then
+      exit;
+  end;
+end;
+
+
+function findrocks():Integer;
+var
+  TPA:TPointArray;
+  ATPA:T2DPointArray;
+  x, y, i:Integer;
+  Bounds:TBox;
+begin
+  ColorToleranceSpeed(2);
+  SetColorSpeed2Modifiers(myRock.hue, myRock.sat);
+  FindColorsSpiralTolerance(256, 166, TPA, myRock.color, 3, 3, 514, 339, myRock.tol);
+  ColorToleranceSpeed(1);
+  SetColorSpeed2Modifiers(0.02, 0.02);
+  if (Length(TPA) > 0) then
+  begin
+    SplitTPAWrap(TPA, 4, ATPA);
+    filterTPAsBetween(ATPA, 1, 70);
+    SortATPAFromFirstpoint(ATPA, Point(264, 164));
+    if debug then
+      DebugATPABounds(ATPA);
+    result := length(ATPA);
+    if debug then
+      Writeln('Found ' + ToStr(result) + ' ' + myRock.name + ' rocks');
+    Bounds := GetATPABounds(ATPA);
+    if rClick then
+    begin
+      for i := 0 to high(ATPA) do
+      begin
+        MiddleTPAEx(ATPA[i], x, y);
+        Mouse(x, y, 4, 4, Mouse_Right);
+        if ss_ChooseOptionMulti(['ine','Mine']) then
+        begin
+          waitMine;
+          exit;
+        end;
+      end;
+    end;
+    try
+      MiddleTPAEx(ATPA[0], x, y);
+      Mouse(x, y, 4, 4, Mouse_left);
+      waitMine;
+    except
+      wait(200);
+    end;
+  end;
+end;
+
+function ss_loggedin:boolean;
+begin
+  result := (GetColor(426, 488) = 16777215);
+end;
+
+procedure ss_login;
+begin
+  if (autoLogin) then
+  begin
+    Mouse(483, 412, 0, 0, Mouse_left);
+    waitFunc(@ss_loggedin, 200, 4500);
+  end;
+end;
+
+procedure ss_logout;
+begin
+  Mouse(753, 10, 5, 5, Mouse_left);
+  wait(1500);
+  Mouse(639, 375, 5, 5, Mouse_left);
+  TerminateScript;
+end;
+
+function savesettings(fileName:string):boolean;
+var
+  tempFile:Integer;
+begin
+  tempFile := RewriteFile(appPath + 'VIPMiner\' + fileName + '.txt', True);
+  try
+    WriteFileString(tempFile,'[autoLogin=]' + ToStr(myGui.Checks[0].CHECKED) + '[/autoLogin]');
+    WriteFileString(tempFile, '[logoutMod=]' + ToStr(myGui.Checks[1].CHECKED) + '[/logoutMod]');
+    WriteFileString(tempFile,'[rightClick=]' + ToStr(myGui.Checks[2].CHECKED) + '[/rightClick]');
+    WriteFileString(tempFile, '[debug=]' + ToStr(myGui.Checks[3].CHECKED) + '[/debug]');
+    WriteFileString(tempFile, '[indexRock=]' + ToStr(myGUI.combos[0].ITEMINDEX) + '[/indexRock]');
+    WriteFileString(tempFile, '[indexMode=]' + ToStr(myGUI.combos[1].ITEMINDEX) + '[/indexMode]');
+    writeLn('Successfully saved: ' + appPath + 'VIPMiner\' + fileName + '.txt');
+    result := true;
+  except
+    Writeln('Error saving settings');
+    result := false;
+  finally
+    closeFile(tempFile);
+  end;
+end;
+
+function loadSettings(fileName:string):boolean;
+var
+  info:string;
+  tmpFile:Integer;
+begin
+  tmpFile := openFile(appPath + 'VIPMiner\' + fileName + '.txt', true);
+  try
+    ReadFileString(tmpFile, info, 250);
+    myGUI.Checks[0].checked := StrToBool(Between('[autoLogin=]', '[/autoLogin]', info));
+    myGUI.Checks[1].checked := StrToBool(Between('[logoutMod=]', '[/logoutMod]', info));
+    myGUI.Checks[2].checked := StrToBool(Between('[rightClick=]', '[/rightClick]', info));
+    myGUI.Checks[3].checked := StrToBool(Between('[debug=]', '[/debug]', info));
+    myGUI.combos[0].ITEMINDEX := StrToInt(Between('[indexRock=]', '[/indexRock]', info));
+    myGUI.combos[1].ITEMINDEX := StrToInt(Between('[indexMode=]', '[/indexMode]', info));
+    result := true;
+  except
+    result := false;
+  finally
+    closeFile(tmpFile);
+  end;
+end;
+
+procedure setUpColors(rockCol, rockTol, xp:Integer;rockHue, rockSat:Extended;name:string);
+begin
+  myRock.color := rockCol;
+  myRock.tol := rockTol;
+  myRock.hue := rockHue;
+  myRock.sat := rockSat;
+  myRock.xp := xp;
+  myRock.name := name;
+end;
+
+function getModeRate:Integer;
+begin
+  case myMode of
+    'Sir': result := 250;
+    'Lord': result := 200;
+    'Legend': result := 20;
+    'Extreme': result := 1;
+  end;
+end;
+
+procedure start();
+begin
+  autoLogin := myGui.Checks[0].CHECKED;
+  logoutMod := myGui.Checks[1].CHECKED;
+  rClick := myGui.Checks[2].CHECKED;
+  debug := myGui.Checks[3].CHECKED;
+  case myGui.combos[1].itemindex of
+    0: myMode := 'Sir';
+    1: myMode := 'Lord';
+    2: myMode := 'Legend';
+    3: myMode := 'Extreme';
+  end;
+  case myGUI.combos[0].ITEMINDEX of
+    0: setUpColors(7895426, 6, (45 * getModeRate), 0.28, 0.08, 'Tin');
+    1: setUpColors(3890304, 6, (45 * getModeRate), 0.07, 0.17, 'Copper');
+    2: setUpColors(2174282, 8, (87 * getModeRate), 0.14, 0.37, 'Iron');
+    3: setUpColors(2504760, 4, (125 * getModeRate), 0.00, 0.33, 'Coal');
+    4: setUpColors(6505283, 7, (200 * getModeRate), 0.00, 0.10, 'Mithril');
+    5: setUpColors(5070924, 7, (237 * getModeRate), 0.12, 0.12, 'Adamant');
+  end;
+  pressed := true;
+  myGui.Form.CLOSE;
+end;
+
+procedure updateFiles;
+var
+  tsa:TStringArray;
+  i:Integer;
+begin
+  tsa := Getfiles(AppPath + 'VIPMiner\', 'txt');
+  myGUI.loaded.ITEMS.Clear;
+  for i := 0 to high(tsa) do
+    myGUI.loaded.ITEMS.Add(ReplaceWrap(tsa[i], '.txt', '', [rfReplaceAll]));
+end;
+
+procedure handle(sender:TObject);
+begin
+  case sender of
+    myGui.loadButtons[0]: myGUI.save.SHOWMODAL;
+    myGui.loadButtons[1]:
+    begin
+      updateFiles;
+      myGUI.load.SHOWMODAL;
+    end;
+    myGui.loadButtons[2]: start();
+    myGui.saveButton:
+    begin
+      case (myGUI.saveEdit.text <> '') of
+        True:
+        begin
+          savesettings(myGUI.saveEdit.text);
+          myGUI.save.CLOSE;
+        end;
+        False: MessageBox('You must name the file!', 'Error', 8);
+      end;
+    end;
+    myGui.selectButtons[0]:
+    begin
+      case (myGui.loaded.ITEMINDEX > - 1) of
+        True:
+        begin
+          loadSettings(myGui.loaded.ITEMS.Strings[myGui.loaded.ITEMINDEX]);
+          myGui.load.CLOSE;
+        end;
+        False: MessageBox('No file selected!', 'Error', 8);
+      end;
+    end;
+    myGui.selectButtons[1]:
+    begin
+      case (myGui.loaded.ITEMINDEX > - 1) of
+        True:
+        begin
+          case DeleteFile(appPath + 'VIPMiner\' + myGui.loaded.ITEMS.Strings[myGui.loaded.ITEMINDEX] + '.txt') of
+            True:
+            begin
+              writeLn('Successfully deleted: ' + appPath + 'VIPMiner\' + myGui.loaded.ITEMS.Strings[myGui.loaded.ITEMINDEX] + '.txt');
+              updateFiles();
+            end;
+            False:MessageBox('Error deleting file!', 'Error', 8);
+          end;
+        end;
+        False:
+      end;
+    end;
+  end;
+end;
+
+procedure loadForm;
+var
+  i:Integer;
+  text:TStringArray;
+begin
+  // saveEdit
+
+  myGUI.Form := TForm.Create(nil);
+  with myGUI.Form do
+  begin
+    Caption := 'VIP miner | Officer Barbrady';
+    top := 200;
+    left := 200;
+    width := 300;
+    height := 200;
+  end;
+
+  myGUI.load := TForm.Create(nil);
+  with myGUI.load do
+  begin
+    Caption := 'Load settings';
+    top := 250;
+    left := 350;
+    width := 200;
+    height := 230;
+    //color := 10572865;
+  end;
+
+  myGUI.loaded := TListBox.Create(myGUI.load);
+  with myGUI.loaded do
+  begin
+    Parent := myGUI.load;
+    Left := 30;
+    Top := 15;
+    Width := 140;
+    Height := 160;
+    FONT.Size := 11;
+    font.name := 'Times new Roman';
+   // Color := 1844685;
+  end;
+
+  myGUI.save := TForm.Create(nil);
+  with myGUI.save do
+  begin
+    Caption := 'Save settings';
+    top := 250;
+    left := 350;
+    width := 200;
+    height := 150;
+    color := 10572865;
+  end;
+
+  Text := ['Auto login','Logout on mod','Right click','Debug'];
+  for i := 0 to high(myGui.Checks) do
+  begin
+    myGui.Checks[i] := TCheckBox.Create(myGUI.form);
+    with myGui.Checks[i] do
+    begin
+      Parent := myGUI.Form;
+      case (i < 2 ) of
+        True: left := 50 + (i * 100);
+        False: left := 50 + ((i - 2) * 100);
+      end;
+      top := 25;
+      if (i < 2) then
+        top := 60;
+      Caption := Text[i];
+    end;
+  end;
+
+  for i := 0 to high(myGui.combos) do
+  begin
+    myGui.combos[i] := TComboBox.Create(myGUI.form);
+    with myGui.combos[i] do
+    begin
+      Parent := myGUI.Form;
+      left := 35 + (i * 130);
+      top := 100;
+      case i of
+        0: text := 'Rock type';
+        1: text := 'Game mode';
+      end;
+    end;
+  end;
+
+  myGui.saveEdit := TEdit.Create(myGUI.save);
+  with myGui.saveEdit do
+  begin
+    Parent := myGUI.save;
+    left := 40;
+    top := 45;
+    width := 120;
+    text := 'Save as..';
+  end;
+
+  Text := ['Load','Delete'];
+  //selectButtons
+  for i := 0 to high(myGui.selectButtons) do
+  begin
+    myGui.selectButtons[i] := TButton.Create(myGUI.load);
+    with myGui.selectButtons[i] do
+    begin
+      Parent := myGUI.load;
+      left := 25 + (i * 80);
+      top := 185;
+      Width := 75;
+      Caption := Text[i];
+      onClick := @handle;
+      font.name := 'Consolas';
+    end;
+  end;
+
+  myGui.saveButton := TButton.Create(myGUI.save);
+  with myGui.saveButton do
+  begin
+    Parent := myGUI.save;
+    left := 57;
+    top := 110;
+    Width := 85;
+    Caption := 'Save';
+    onClick := @handle;
+  end;
+
+  Text := ['Save settings','Load settings','Start script'];
+  for i := 0 to high(myGui.loadButtons) do
+  begin
+    myGui.loadButtons[i] := TButton.Create(myGUI.form);
+    with myGui.loadButtons[i] do
+    begin
+      Parent := myGUI.Form;
+      left := 12 + (i * 95);
+      top := 160;
+      Width := 85;
+      Caption := Text[i];
+      onClick := @handle;
+    end;
+  end;
+
+  updateFiles();
+  text := ['Tin','Copper','Iron','Coal','Mithril','Adamant'];
+  for i := 0 to high(text) do
+    myGui.combos[0].ITEMS.Add(text[i]);
+  text := ['Sir','Lord','Legend','Extreme'];
+  for i := 0 to high(text) do
+    myGui.combos[1].ITEMS.Add(text[i]);
+
+end;
+
+procedure SafeInitForm;
+var
+  v: TVariantArray;
+begin
+  SetLength(V, 0);
+  ThreadSafeCall('loadForm', v);
+end;
+
+procedure ShowFormModal;
+begin
+  myGUI.Form.ShowModal;
+end;
+
+procedure SafeShowFormModal;
+var
+  v: TVariantArray;
+begin
+  SetLength(V, 0);
+  ThreadSafeCall('ShowFormModal', v);
+end;
+
+begin
+  if (not DirectoryExists((appPath + 'VIPMiner'))) then
+  begin
+    if not ForceDirectories(appPath + 'VIPMiner') then
+    begin
+      Writeln('Unable to create directories needed to run');
+      Exit;
+    end;
+  end;
+  SafeInitForm;
+  SafeShowFormModal;
+  if (pressed = true) then
+  begin
+    Mousespeed := 25;
+    wait(1000);
+    setInv;
+    while (progressReport()) do
+    begin
+      if (not ss_loggedin) then
+        ss_login;
+      if ((findModFunc) and (findMod)) then
+        ss_logout;
+      if (ss_invfull) then
+        ss_dropAll;
+      findrocks();
+    end;
+  end;
+end.
